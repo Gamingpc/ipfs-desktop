@@ -1,10 +1,13 @@
-import { clipboard, ipcMain, globalShortcut, nativeImage } from 'electron'
+import os from 'os'
 import i18n from 'i18next'
-import { store, notify, notifyError, logger } from '../utils'
-import { createToggler } from './utils'
+import { clipboard, nativeImage, ipcMain } from 'electron'
+import { notify, notifyError, logger, setupGlobalShortcut } from '../utils'
 
 const settingsOption = 'screenshotShortcut'
-const shortcut = 'CommandOrControl+Alt+S'
+
+export const SHORTCUT = os.platform() === 'darwin'
+  ? 'Command+Control+S'
+  : 'CommandOrControl+Alt+S'
 
 async function makeScreenshotDir (ipfs) {
   try {
@@ -41,7 +44,7 @@ function onError (e) {
 }
 
 function handleScreenshot (ctx) {
-  let { getIpfsd, launchWebUI } = ctx
+  const { getIpfsd, launchWebUI } = ctx
 
   return async (_, output) => {
     const ipfsd = await getIpfsd()
@@ -75,7 +78,7 @@ function handleScreenshot (ctx) {
       logger.info('[screenshot] started: writing screenshots to %s', baseName)
       let lastImage = null
 
-      for (let { name, image } of output) {
+      for (const { name, image } of output) {
         const img = nativeImage.createFromDataURL(image)
         const path = isDir ? `${baseName}${name}.png` : baseName
         await ipfs.files.write(path, img.toPNG(), { create: true })
@@ -90,28 +93,20 @@ function handleScreenshot (ctx) {
   }
 }
 
+export function takeScreenshot (ctx) {
+  const { webui } = ctx
+  logger.info('[screenshot] taking screenshot')
+  webui.webContents.send('screenshot')
+}
+
 export default function (ctx) {
-  let { webui } = ctx
-
-  let activate = (value, oldValue) => {
-    if (value === oldValue) return
-
-    if (value === true) {
-      globalShortcut.register(shortcut, () => {
-        logger.info('[screenshot] taking screenshot')
-        webui.webContents.send('screenshot')
-      })
-
-      logger.info('[screenshot] shortcut enabled')
-    } else {
-      globalShortcut.unregister(shortcut)
-      logger.info('[screenshot] shortcut disabled')
+  setupGlobalShortcut(ctx, {
+    settingsOption,
+    accelerator: SHORTCUT,
+    action: () => {
+      takeScreenshot(ctx)
     }
+  })
 
-    return true
-  }
-
-  activate(store.get(settingsOption, false))
-  createToggler(ctx, settingsOption, activate)
   ipcMain.on('screenshot', handleScreenshot(ctx))
 }

@@ -1,6 +1,5 @@
 import AutoLaunch from 'auto-launch'
-import { store, logger } from '../utils'
-import { createToggler } from './utils'
+import { store, logger, createToggler } from '../utils'
 
 const settingsOption = 'autoLaunch'
 const autoLauncher = new AutoLaunch({
@@ -8,7 +7,7 @@ const autoLauncher = new AutoLaunch({
 })
 
 export default function (ctx) {
-  let activate = async (value, oldValue) => {
+  const activate = async (value, oldValue) => {
     if (process.env.NODE_ENV === 'development') {
       logger.info('[launch on startup] unavailable during development')
       return

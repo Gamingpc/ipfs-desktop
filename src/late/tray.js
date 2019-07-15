@@ -2,10 +2,17 @@ import { store, logger } from '../utils'
 import { Menu, Tray, shell, app, ipcMain } from 'electron'
 import i18n from 'i18next'
 import { STATUS } from './register-daemon'
+import { SHORTCUT as SCREENSHOT_SHORTCUT, takeScreenshot } from './take-screenshot'
+import { SHORTCUT as HASH_SHORTCUT, downloadHash } from './download-hash'
 import path from 'path'
 import os from 'os'
 
-function buildMenu ({ checkForUpdates, launchWebUI }) {
+const isMac = os.platform() === 'darwin'
+const isLinux = os.platform() === 'linux'
+
+function buildMenu (ctx) {
+  const { checkForUpdates, launchWebUI } = ctx
+
   return Menu.buildFromTemplate([
     ...[
       ['ipfsIsStarting', 'yellow'],
@@ -53,6 +60,21 @@ function buildMenu ({ checkForUpdates, launchWebUI }) {
     },
     { type: 'separator' },
     {
+      id: 'takeScreenshot',
+      label: i18n.t('takeScreenshot'),
+      click: () => { takeScreenshot(ctx) },
+      accelerator: SCREENSHOT_SHORTCUT,
+      enabled: false
+    },
+    {
+      id: 'downloadHash',
+      label: i18n.t('downloadHash'),
+      click: () => { downloadHash(ctx) },
+      accelerator: HASH_SHORTCUT,
+      enabled: false
+    },
+    { type: 'separator' },
+    {
       label: i18n.t('advanced'),
       submenu: [
         {
@@ -97,7 +119,8 @@ function buildMenu ({ checkForUpdates, launchWebUI }) {
     },
     {
       label: i18n.t('quit'),
-      click: () => { app.quit() }
+      click: () => { app.quit() },
+      accelerator: isMac ? 'Command+Q' : null
     }
   ])
 }
@@ -105,7 +128,7 @@ function buildMenu ({ checkForUpdates, launchWebUI }) {
 function icon (color) {
   const p = path.resolve(path.join(__dirname, '../../assets/icons/tray'))
 
-  if (os.platform() === 'darwin') {
+  if (isMac) {
     return path.join(p, `${color}.png`)
   }
 
@@ -118,7 +141,7 @@ export default function (ctx) {
   let menu = null
   let status = {}
 
-  if (os.platform() !== 'darwin') {
+  if (!isMac) {
     // Show the context menu on left click on other
     // platforms than macOS.
     tray.on('click', event => {
@@ -131,6 +154,10 @@ export default function (ctx) {
     menu = buildMenu(ctx)
     tray.setContextMenu(menu)
     tray.setToolTip('IPFS Desktop')
+
+    menu.on('menu-will-show', () => { ipcMain.emit('menubar-will-open') })
+    menu.on('menu-will-close', () => { ipcMain.emit('menubar-will-close') })
+
     updateStatus(status)
   }
 
@@ -148,13 +175,16 @@ export default function (ctx) {
     menu.getMenuItemById('startIpfs').visible = menu.getMenuItemById('ipfsIsNotRunning').visible
     menu.getMenuItemById('stopIpfs').visible = menu.getMenuItemById('ipfsIsRunning').visible
 
+    menu.getMenuItemById('takeScreenshot').enabled = menu.getMenuItemById('ipfsIsRunning').visible
+    menu.getMenuItemById('downloadHash').enabled = menu.getMenuItemById('ipfsIsRunning').visible
+
     if (status === STATUS.STARTING_FINISHED) {
       tray.setImage(icon('ice'))
     } else {
       tray.setImage(icon('black'))
     }
 
-    if (os.platform() === 'linux') {
+    if (isLinux) {
       // On Linux, in order for changes made to individual MenuItems to take effect,
       // you have to call setContextMenu again - https://electronjs.org/docs/api/tray
       tray.setContextMenu(menu)
